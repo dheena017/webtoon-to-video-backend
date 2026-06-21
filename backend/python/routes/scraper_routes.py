@@ -202,11 +202,22 @@ async def scrape_images(request: Request, body: ScrapeImagesRequest):
 
                     # Cache the result
                     unique_id = f"stitched_{int(time.time() * 1000)}_full"
-                    stitched_url = f"/api/merge-images/cached/{unique_id}"
+                    stitched_url = f"/api/stitch-images/cached/{unique_id}"
 
                     stitched_cache.set(unique_id, {"data": stitched_bytes, "content_type": "image/png"})
                     stitched_cache.set(cache_key, stitched_url)
-                    edit_history.set(stitched_url, proxied_urls[0])
+                    # Save recipe for full strip
+                    recipe = {
+                        "type": "merge",
+                        "urls": proxied_urls,
+                        "layout": "vertical",
+                        "spacing": 0,
+                        "spacing_color": "white",
+                        "scale_to_fit": True,
+                        "align_mode": "center",
+                        "padding": 0
+                    }
+                    edit_history.set(stitched_url, recipe)
 
                     final_images = [stitched_url]
                     elapsed = round((time.time() - t_stitch_start) * 1000, 2)
@@ -280,10 +291,20 @@ async def scrape_images(request: Request, body: ScrapeImagesRequest):
                                         cropped_buffer = out.getvalue()
                                         
                                         unique_id = f"merged_{int(time.time() * 1000)}_smartcrop_{idx}_{p_idx}_{random.randint(0, 1000)}"
-                                        cached_url = f"/api/merge-images/cached/{unique_id}"
+                                        cached_url = f"/api/stitch-images/cached/{unique_id}"
                                         
                                         stitched_cache.set(unique_id, {"data": cropped_buffer, "content_type": content_type})
-                                        edit_history.set(cached_url, img_url)
+                                        # Save recipe for smart crop
+                                        recipe = {
+                                            "type": "edit",
+                                            "url": img_url,
+                                            "cropTop": p_top,
+                                            "cropBottom": p_bottom,
+                                            "cropLeft": p_left,
+                                            "cropRight": p_right,
+                                            "autoTrim": False
+                                        }
+                                        edit_history.set(cached_url, recipe)
                                         final_images.append(cached_url)
                             else:
                                 final_images.append(img_url)

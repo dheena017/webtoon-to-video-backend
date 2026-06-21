@@ -49,14 +49,23 @@ class CacheStore(Generic[T]):
             if isinstance(value, bytes):
                 with open(os.path.join(self.disk_dir, f"{key}.bin"), "wb") as f:
                     f.write(value)
-            elif isinstance(value, dict) and "data" in value and isinstance(value["data"], bytes):
-                # Save image bytes
-                with open(os.path.join(self.disk_dir, f"{key}.bin"), "wb") as f:
-                    f.write(value["data"])
-                # Save metadata (content_type, etc.) separately
-                meta = {k: v for k, v in value.items() if k != "data"}
+            elif isinstance(value, dict):
+                if "data" in value and isinstance(value["data"], bytes):
+                    # Save image bytes
+                    with open(os.path.join(self.disk_dir, f"{key}.bin"), "wb") as f:
+                        f.write(value["data"])
+                    # Save metadata (content_type, etc.) separately
+                    meta = {k: v for k, v in value.items() if k != "data"}
+                    with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
+                        json.dump(meta, f)
+                else:
+                    # Save generic dict as JSON
+                    with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
+                        json.dump(value, f)
+            else:
+                # Save anything else (str, int, etc.) as JSON wrapped in a container
                 with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
-                    json.dump(meta, f)
+                    json.dump({"__wrapper__": value}, f)
         except Exception:
             pass
 
@@ -70,9 +79,16 @@ class CacheStore(Generic[T]):
                 if os.path.exists(json_path):
                     with open(json_path, "r", encoding="utf-8") as f:
                         meta = json.load(f)
-                    meta["data"] = data
-                    return meta
+                    if isinstance(meta, dict):
+                        meta["data"] = data
+                        return meta
                 return data
+            elif os.path.exists(json_path):
+                with open(json_path, "r", encoding="utf-8") as f:
+                    val = json.load(f)
+                if isinstance(val, dict) and "__wrapper__" in val:
+                    return val["__wrapper__"]
+                return val
         except Exception:
             pass
         return None
@@ -88,14 +104,21 @@ class CacheStore(Generic[T]):
         if not os.path.exists(self.disk_dir):
             return 0
         try:
+            # Gather all unique keys from both .bin and .json files
+            keys = set()
             for fname in os.listdir(self.disk_dir):
-                if fname.endswith(".bin"):
-                    key = fname[:-4]  # strip .bin extension
-                    if key not in self.store:
-                        val = self._read_from_disk(key)
-                        if val is not None:
-                            self.store[key] = CacheEntry(val, expires_at=None)
-                            loaded += 1
+                if fname.endswith(".bin") or fname.endswith(".json"):
+                    keys.add(os.path.splitext(fname)[0])
+
+            for key in sorted(list(keys)): # sort to have some deterministic order
+                if key not in self.store:
+                    val = self._read_from_disk(key)
+                    if val is not None:
+                        # For warm up, we don't know the original expires_at, so we set it to None (perpetual)
+                        self.store[key] = CacheEntry(val, expires_at=None)
+                        loaded += 1
+                        if loaded >= self.max_size:
+                            break
         except Exception:
             pass
         return loaded
@@ -105,7 +128,8 @@ class CacheStore(Generic[T]):
         if len(self.store) >= self.max_size:
             oldest_key = next(iter(self.store.keys()), None)
             if oldest_key is not None:
-                self.store.pop(oldest_key, None)
+                # Use delete() to ensure it's removed from BOTH memory and disk
+                self.delete(oldest_key)
                 self.evictions += 1
 
         ttl = ttl_sec if ttl_sec is not None else self.default_ttl_sec
