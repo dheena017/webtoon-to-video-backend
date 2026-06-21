@@ -336,9 +336,14 @@ async def scrape_images(request: Request, body: ScrapeImagesRequest):
         # This lets the frontend persist original_url on each panel in the DB
         image_origins: dict = {}
         for final_url in final_images:
-            origin = edit_history.get(final_url)
-            if origin:
-                image_origins[final_url] = origin
+            recipe = edit_history.get(final_url)
+            if recipe:
+                if isinstance(recipe, dict):
+                    # extract the root url from recipe
+                    origin = recipe.get("url") or (recipe.get("urls")[0] if recipe.get("urls") else None)
+                    image_origins[final_url] = origin
+                else:
+                    image_origins[final_url] = recipe
             elif final_url in proxied_urls:
                 image_origins[final_url] = final_url
 

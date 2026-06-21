@@ -10,7 +10,7 @@ import os
 import json
 import tempfile
 import shutil
-from typing import Dict, Any, Optional, TypeVar, Generic
+from typing import Dict, Any, Optional, TypeVar, Generic, Tuple
 
 T = TypeVar('T')
 
@@ -43,52 +43,77 @@ class CacheStore(Generic[T]):
         else:
             self.disk_dir = os.path.join(tempfile.gettempdir(), "anivox_disk_cache", name)
 
+    def _get_disk_key(self, key: str) -> str:
+        """Hashed filename to avoid characters like / causing issues."""
+        import hashlib
+        return hashlib.md5(key.encode('utf-8')).hexdigest()
+
     def _write_to_disk(self, key: str, value: Any) -> None:
         try:
             os.makedirs(self.disk_dir, exist_ok=True)
+            dkey = self._get_disk_key(key)
             if isinstance(value, bytes):
-                with open(os.path.join(self.disk_dir, f"{key}.bin"), "wb") as f:
+                # We need to save the original key for warm_up
+                with open(os.path.join(self.disk_dir, f"{dkey}.bin"), "wb") as f:
                     f.write(value)
+                with open(os.path.join(self.disk_dir, f"{dkey}.json"), "w", encoding="utf-8") as f:
+                    json.dump({"__key__": key}, f)
             elif isinstance(value, dict):
                 if "data" in value and isinstance(value["data"], bytes):
                     # Save image bytes
-                    with open(os.path.join(self.disk_dir, f"{key}.bin"), "wb") as f:
+                    with open(os.path.join(self.disk_dir, f"{dkey}.bin"), "wb") as f:
                         f.write(value["data"])
                     # Save metadata (content_type, etc.) separately
                     meta = {k: v for k, v in value.items() if k != "data"}
-                    with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
+                    meta["__key__"] = key
+                    with open(os.path.join(self.disk_dir, f"{dkey}.json"), "w", encoding="utf-8") as f:
                         json.dump(meta, f)
                 else:
                     # Save generic dict as JSON
-                    with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
-                        json.dump(value, f)
+                    val_copy = dict(value)
+                    val_copy["__key__"] = key
+                    with open(os.path.join(self.disk_dir, f"{dkey}.json"), "w", encoding="utf-8") as f:
+                        json.dump(val_copy, f)
             else:
                 # Save anything else (str, int, etc.) as JSON wrapped in a container
-                with open(os.path.join(self.disk_dir, f"{key}.json"), "w", encoding="utf-8") as f:
-                    json.dump({"__wrapper__": value}, f)
+                with open(os.path.join(self.disk_dir, f"{dkey}.json"), "w", encoding="utf-8") as f:
+                    json.dump({"__wrapper__": value, "__key__": key}, f)
         except Exception:
             pass
 
-    def _read_from_disk(self, key: str) -> Optional[Any]:
+    def _read_from_disk(self, dkey_or_key: str, is_dkey: bool = False) -> Optional[Tuple[str, Any]]:
+        """Returns Tuple (original_key, value)"""
         try:
-            bin_path = os.path.join(self.disk_dir, f"{key}.bin")
-            json_path = os.path.join(self.disk_dir, f"{key}.json")
-            if os.path.exists(bin_path):
-                with open(bin_path, "rb") as f:
-                    data = f.read()
-                if os.path.exists(json_path):
-                    with open(json_path, "r", encoding="utf-8") as f:
-                        meta = json.load(f)
-                    if isinstance(meta, dict):
-                        meta["data"] = data
-                        return meta
-                return data
-            elif os.path.exists(json_path):
+            dkey = dkey_or_key if is_dkey else self._get_disk_key(dkey_or_key)
+            bin_path = os.path.join(self.disk_dir, f"{dkey}.bin")
+            json_path = os.path.join(self.disk_dir, f"{dkey}.json")
+
+            if os.path.exists(json_path):
                 with open(json_path, "r", encoding="utf-8") as f:
-                    val = json.load(f)
-                if isinstance(val, dict) and "__wrapper__" in val:
-                    return val["__wrapper__"]
-                return val
+                    meta = json.load(f)
+
+                orig_key = meta.get("__key__")
+                if not orig_key: return None # missing key mapping
+
+                if os.path.exists(bin_path):
+                    with open(bin_path, "rb") as f:
+                        data = f.read()
+                    if len(meta) == 1 and "__key__" in meta:
+                        return orig_key, data
+
+                    val = {k: v for k, v in meta.items() if k != "__key__"}
+                    val["data"] = data
+                    return orig_key, val
+                else:
+                    if "__wrapper__" in meta:
+                        return orig_key, meta["__wrapper__"]
+                    return orig_key, {k: v for k, v in meta.items() if k != "__key__"}
+
+            # Legacy fallback for direct keys that didn't have slashes
+            if os.path.exists(bin_path) and not os.path.exists(json_path) and not is_dkey:
+                 with open(bin_path, "rb") as f:
+                     return dkey_or_key, f.read()
+
         except Exception:
             pass
         return None
@@ -104,18 +129,18 @@ class CacheStore(Generic[T]):
         if not os.path.exists(self.disk_dir):
             return 0
         try:
-            # Gather all unique keys from both .bin and .json files
-            keys = set()
+            # Gather all unique disk keys from .json files (they now always contain the mapping)
+            dkeys = set()
             for fname in os.listdir(self.disk_dir):
-                if fname.endswith(".bin") or fname.endswith(".json"):
-                    keys.add(os.path.splitext(fname)[0])
+                if fname.endswith(".json"):
+                    dkeys.add(os.path.splitext(fname)[0])
 
-            for key in sorted(list(keys)): # sort to have some deterministic order
-                if key not in self.store:
-                    val = self._read_from_disk(key)
-                    if val is not None:
-                        # For warm up, we don't know the original expires_at, so we set it to None (perpetual)
-                        self.store[key] = CacheEntry(val, expires_at=None)
+            for dkey in sorted(list(dkeys)):
+                res = self._read_from_disk(dkey, is_dkey=True)
+                if res:
+                    orig_key, val = res
+                    if orig_key not in self.store:
+                        self.store[orig_key] = CacheEntry(val, expires_at=None)
                         loaded += 1
                         if loaded >= self.max_size:
                             break
@@ -140,8 +165,9 @@ class CacheStore(Generic[T]):
     def get(self, key: str) -> Optional[T]:
         entry = self.store.get(key)
         if not entry:
-            disk_val = self._read_from_disk(key)
-            if disk_val is not None:
+            res = self._read_from_disk(key)
+            if res:
+                _, disk_val = res
                 ttl = self.default_ttl_sec
                 expires_at = time.time() + ttl if ttl is not None else None
                 self.store[key] = CacheEntry(disk_val, expires_at)
@@ -152,16 +178,7 @@ class CacheStore(Generic[T]):
 
         # Check TTL expiration
         if entry.expires_at is not None and time.time() > entry.expires_at:
-            self.store.pop(key, None)
-            try:
-                bin_path = os.path.join(self.disk_dir, f"{key}.bin")
-                json_path = os.path.join(self.disk_dir, f"{key}.json")
-                if os.path.exists(bin_path):
-                    os.remove(bin_path)
-                if os.path.exists(json_path):
-                    os.remove(json_path)
-            except Exception:
-                pass
+            self.delete(key)
             self.evictions += 1
             self.misses += 1
             return None
@@ -175,8 +192,9 @@ class CacheStore(Generic[T]):
     def delete(self, key: str) -> bool:
         on_disk = False
         try:
-            bin_path = os.path.join(self.disk_dir, f"{key}.bin")
-            json_path = os.path.join(self.disk_dir, f"{key}.json")
+            dkey = self._get_disk_key(key)
+            bin_path = os.path.join(self.disk_dir, f"{dkey}.bin")
+            json_path = os.path.join(self.disk_dir, f"{dkey}.json")
             if os.path.exists(bin_path):
                 os.remove(bin_path)
                 on_disk = True
@@ -187,7 +205,7 @@ class CacheStore(Generic[T]):
             pass
 
         if key in self.store:
-            self.store.pop(key)
+            self.store.pop(key, None)
             return True
         return on_disk
 
@@ -211,16 +229,7 @@ class CacheStore(Generic[T]):
             if entry.expires_at is not None and now > entry.expires_at
         ]
         for k in expired_keys:
-            self.store.pop(k, None)
-            try:
-                bin_path = os.path.join(self.disk_dir, f"{k}.bin")
-                json_path = os.path.join(self.disk_dir, f"{k}.json")
-                if os.path.exists(bin_path):
-                    os.remove(bin_path)
-                if os.path.exists(json_path):
-                    os.remove(json_path)
-            except Exception:
-                pass
+            self.delete(k)
             self.evictions += 1
             purged += 1
         return purged
