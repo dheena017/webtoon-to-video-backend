@@ -14,7 +14,7 @@ import tempfile
 import zipfile
 import asyncio
 from typing import List, Optional, Literal, Dict, Any
-from fastapi import APIRouter, HTTPException, Response, Query, Body, Path
+from fastapi import APIRouter, HTTPException, Response, Query, Body, Path, Request
 from pydantic import BaseModel, Field
 from PIL import Image
 
@@ -148,10 +148,28 @@ async def edit_image(body: EditImageRequest):
 
         # Cache in memory
         unique_id = f"merged_{int(time.time() * 1000)}_cropped"
-        new_url = f"/api/merge-images/cached/{unique_id}"
+        new_url = f"/api/stitch-images/cached/{unique_id}"
         
         stitched_cache.set(unique_id, {"data": img_buffer, "content_type": content_type})
-        edit_history.set(new_url, body.url)
+        # Save recipe for re-generation
+        recipe = {
+            "type": "edit",
+            "url": body.url,
+            "cropTop": body.cropTop,
+            "cropBottom": body.cropBottom,
+            "cropLeft": body.cropLeft,
+            "cropRight": body.cropRight,
+            "autoTrim": body.autoTrim,
+            "sensitivity": body.sensitivity,
+            "padding": body.padding,
+            "backgroundColorMode": body.backgroundColorMode,
+            "rotate": body.rotate,
+            "flipHorizontal": body.flipHorizontal,
+            "aspectRatio": body.aspectRatio,
+            "outputFormat": body.outputFormat,
+            "cropQuality": body.cropQuality
+        }
+        edit_history.set(new_url, recipe)
 
         logger.info(f"[Image Edit] Successfully edited image. Cached as: {new_url}")
         return {"success": True, "url": new_url}
@@ -193,10 +211,17 @@ async def transform_image(body: TransformImageRequest):
         out_bytes = out.getvalue()
 
         unique_id = f"transform_{int(time.time() * 1000)}"
-        proxy_url = f"/api/merge-images/cached/{unique_id}"
+        proxy_url = f"/api/stitch-images/cached/{unique_id}"
 
         stitched_cache.set(unique_id, {"data": out_bytes, "content_type": "image/jpeg"})
-        edit_history.set(proxy_url, body.url)
+        # Save recipe
+        recipe = {
+            "type": "transform",
+            "url": body.url,
+            "transform_type": body.type,
+            "value": body.value
+        }
+        edit_history.set(proxy_url, recipe)
 
         logger.info(f"[Transform] Successfully transformed image. Cached as: {proxy_url}")
         return {"success": True, "url": proxy_url}
@@ -241,10 +266,21 @@ async def merge_images(body: StitchImagesRequest):
         )
 
         unique_id = f"merged_{int(time.time() * 1000)}_merged"
-        new_url = f"/api/merge-images/cached/{unique_id}"
+        new_url = f"/api/stitch-images/cached/{unique_id}"
 
         stitched_cache.set(unique_id, {"data": merged_bytes, "content_type": "image/png"})
-        edit_history.set(new_url, urls[0])
+        # Save recipe
+        recipe = {
+            "type": "merge",
+            "urls": urls,
+            "layout": body.layout,
+            "spacing": body.spacing,
+            "spacing_color": body.spacingColor,
+            "scale_to_fit": body.scaleToFit,
+            "align_mode": body.alignMode,
+            "padding": body.padding
+        }
+        edit_history.set(new_url, recipe)
 
         logger.info(f"[Merge] Successfully stitched images. Cached as: {new_url}")
         return {"success": True, "url": new_url}
@@ -253,8 +289,8 @@ async def merge_images(body: StitchImagesRequest):
         raise HTTPException(status_code=500, detail=f"Image merging failed: {e}")
 
 
-@router.get("/merge-images/cached/{cache_id}", summary="Retrieve stitched cached panel image")
-@router.get("/stitch-images/cached/{cache_id}")
+@router.get("/merge-images/cached/{cache_id}", include_in_schema=False)
+@router.get("/stitch-images/cached/{cache_id}", summary="Retrieve stitched cached panel image")
 async def get_cached_stitch(cache_id: str = Path(...)):
     cached = stitched_cache.get(cache_id)
     if cached:
@@ -264,35 +300,176 @@ async def get_cached_stitch(cache_id: str = Path(...)):
             headers={"Cache-Control": "public, max-age=86400"}
         )
 
-    cached_url_key = f"/api/merge-images/cached/{cache_id}"
+    # Standardize on stitch-images prefix for lookups
+    cached_url_key = f"/api/stitch-images/cached/{cache_id}"
 
-    # Fallback 1: edit_history in-memory/disk cache (maps cached_url → original_url)
-    original_url = edit_history.get(cached_url_key)
+    # Try alternate prefix for legacy lookups
+    legacy_url_key = f"/api/merge-images/cached/{cache_id}"
 
-    # Fallback 2: SQLite panels table — look up the original_url stored alongside image_url
-    if not original_url:
+    # Fallback 1: edit_history (Recipe-based recovery)
+    recipe = edit_history.get(cached_url_key) or edit_history.get(legacy_url_key)
+
+    # Fallback 2: SQLite panels table (Simple URL fallback)
+    simple_url = None
+    if not recipe:
         try:
             import database.db as db
-            original_url = db.get_panel_original_url(cached_url_key)
+            simple_url = db.get_panel_original_url(cached_url_key) or db.get_panel_original_url(legacy_url_key)
         except Exception:
             pass
 
-    if original_url and isinstance(original_url, str):
-        try:
-            logger.info(f"[Cache] Miss for {cache_id} — re-fetching from original: {original_url[:80]}")
-            resolved = await img_utils.resolve_image_to_buffer(original_url)
-            img_bytes = resolved["data"]
+    # Recovery Logic
+    try:
+        recovered_data = None
+        content_type = "image/jpeg"
+
+        if recipe and isinstance(recipe, dict):
+            logger.info(f"[Cache] MISS for {cache_id} — Regenerating from recipe: {recipe.get('type')}")
+            rtype = recipe.get("type")
+
+            if rtype == "edit":
+                # Re-run edit_image logic (simplified)
+                resolved = await img_utils.resolve_image_to_buffer(recipe["url"])
+                img_buffer = resolved["data"]
+                content_type = resolved["contentType"]
+
+                def edit_sync():
+                    nonlocal img_buffer, content_type
+                    img = Image.open(io.BytesIO(img_buffer))
+                    # rotate
+                    if recipe.get("rotate"):
+                        img = img.rotate(recipe["rotate"], expand=True)
+                    # flip
+                    if recipe.get("flipHorizontal"):
+                        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+                    # crop
+                    if any(recipe.get(k, 0) > 0 for k in ("cropTop", "cropBottom", "cropLeft", "cropRight")):
+                        w, h = img.size
+                        t = int(round((recipe.get("cropTop", 0) / 100) * h))
+                        b = int(round((recipe.get("cropBottom", 0) / 100) * h))
+                        l = int(round((recipe.get("cropLeft", 0) / 100) * w))
+                        r = int(round((recipe.get("cropRight", 0) / 100) * w))
+                        if (w - l - r) > 10 and (h - t - b) > 10:
+                            img = img.crop((l, t, w - r, h - b))
+
+                    # Handle aspect ratio adjustment if needed
+                    if recipe.get("aspectRatio") and recipe.get("aspectRatio") != "free":
+                        # simplified aspect ratio adjustment logic
+                        target_w = recipe.get("targetWidth")
+                        target_h = recipe.get("targetHeight")
+                        if target_w and target_h:
+                            img = img_utils.resize_and_pad_pil(img, target_w, target_h)
+
+                    out = io.BytesIO()
+                    img.save(out, format=img.format or 'JPEG')
+                    img_buffer = out.getvalue()
+
+                    if recipe.get("autoTrim"):
+                        trimmed = img_utils.crop_auto_borders(
+                            img_buffer,
+                            tighter=True,
+                            crop_padding=recipe.get("padding"),
+                            sensitivity=recipe.get("sensitivity"),
+                            background_color_mode=recipe.get("backgroundColorMode"),
+                            aspect_ratio=recipe.get("aspectRatio"),
+                            output_format=recipe.get("outputFormat"),
+                            crop_quality=recipe.get("cropQuality")
+                        )
+                        img_buffer = trimmed["data"]
+                        content_type = trimmed["content_type"]
+
+                    # Final resize/pad if target dimensions provided and not already done
+                    if recipe.get("targetWidth") and recipe.get("targetHeight"):
+                        img_final = Image.open(io.BytesIO(img_buffer))
+                        if img_final.size != (recipe["targetWidth"], recipe["targetHeight"]):
+                            img_final = img_utils.resize_and_pad_pil(img_final, recipe["targetWidth"], recipe["targetHeight"])
+                            out_final = io.BytesIO()
+                            img_final.save(out_final, format='JPEG', quality=recipe.get("cropQuality", 90))
+                            img_buffer = out_final.getvalue()
+
+                    return img_buffer, content_type
+
+                recovered_data, content_type = await asyncio.to_thread(edit_sync)
+
+            elif rtype == "transform":
+                resolved = await img_utils.resolve_image_to_buffer(recipe["url"])
+                img = Image.open(io.BytesIO(resolved["data"]))
+                if recipe["transform_type"] == "rotate":
+                    img = img.rotate(int(recipe["value"]), expand=True)
+                elif recipe["transform_type"] == "flip":
+                    axis = Image.FLIP_LEFT_RIGHT if recipe["value"] == "h" else Image.FLIP_TOP_BOTTOM
+                    img = img.transpose(axis)
+                out = io.BytesIO()
+                img.save(out, format="JPEG", quality=92)
+                recovered_data = out.getvalue()
+                content_type = "image/jpeg"
+
+            elif rtype == "merge":
+                resolved = [await img_utils.resolve_image_to_buffer(u) for u in recipe["urls"]]
+                recovered_data = await asyncio.to_thread(
+                    img_utils.stitch_images_together,
+                    image_buffers=[r["data"] for r in resolved],
+                    layout=recipe["layout"],
+                    spacing=recipe["spacing"],
+                    spacing_color=recipe["spacing_color"],
+                    scale_to_fit=recipe["scale_to_fit"],
+                    align_mode=recipe["align_mode"],
+                    padding=recipe["padding"]
+                )
+                content_type = "image/png"
+
+            elif rtype == "split":
+                resolved = await img_utils.resolve_image_to_buffer(recipe["url"])
+                img = Image.open(io.BytesIO(resolved["data"]))
+                w, h = img.size
+                t_pct, b_pct = recipe["range"]
+                t_px = int(round((t_pct / 100.0) * h))
+                b_px = int(round((b_pct / 100.0) * h))
+                seg_img = img.crop((0, t_px, w, b_px))
+                out = io.BytesIO()
+                seg_img.save(out, format="JPEG", quality=90)
+                recovered_data = out.getvalue()
+                content_type = "image/jpeg"
+
+            elif rtype == "clean":
+                resolved = await img_utils.resolve_image_to_buffer(recipe["url"])
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_in:
+                    tmp_in.write(resolved["data"])
+                    tmp_in_path = tmp_in.name
+                tmp_out_path = tmp_in_path.replace(".png", "_out.png")
+                try:
+                    await asyncio.to_thread(
+                        remove_speech_bubbles,
+                        image_path=tmp_in_path,
+                        output_path=tmp_out_path,
+                        method=recipe.get("method"),
+                        sensitivity=recipe.get("sensitivity"),
+                        dilation=recipe.get("dilation"),
+                        inpaint_radius=recipe.get("inpaint_radius"),
+                        detection_style=recipe.get("detection_style")
+                    )
+                    with open(tmp_out_path, "rb") as f:
+                        recovered_data = f.read()
+                    content_type = resolved["contentType"]
+                finally:
+                    for p in (tmp_in_path, tmp_out_path):
+                        if os.path.exists(p): os.remove(p)
+
+        elif simple_url:
+            logger.info(f"[Cache] MISS for {cache_id} — re-fetching simple URL: {simple_url[:60]}")
+            resolved = await img_utils.resolve_image_to_buffer(simple_url)
+            recovered_data = resolved["data"]
             content_type = resolved.get("contentType", "image/jpeg")
-            # Re-populate both caches so subsequent requests are instant
-            stitched_cache.set(cache_id, {"data": img_bytes, "content_type": content_type})
-            edit_history.set(cached_url_key, original_url)
+
+        if recovered_data:
+            stitched_cache.set(cache_id, {"data": recovered_data, "content_type": content_type})
             return Response(
-                content=img_bytes,
+                content=recovered_data,
                 media_type=content_type,
                 headers={"Cache-Control": "public, max-age=86400"}
             )
-        except Exception as refetch_err:
-            logger.warning(f"[Cache] Re-fetch failed for {cache_id}: {refetch_err}")
+    except Exception as e:
+        logger.error(f"[Cache Recovery] Failed for {cache_id}: {e}", exc_info=True)
 
     raise HTTPException(status_code=404, detail="Stitched resource expired or not found.")
 
@@ -352,9 +529,16 @@ async def execute_splits(body: SplitImagesRequest):
                     pass
 
                 cache_id = f"split_{int(time.time() * 1000)}_{i}"
-                new_url = f"/api/merge-images/cached/{cache_id}"
+                new_url = f"/api/stitch-images/cached/{cache_id}"
 
                 stitched_cache.set(cache_id, {"data": seg_bytes, "content_type": "image/jpeg"})
+                # Save recipe
+                recipe = {
+                    "type": "split",
+                    "url": body.url,
+                    "range": (top_pct, bot_pct)
+                }
+                edit_history.set(new_url, recipe)
                 res_urls.append(new_url)
             return res_urls
 
@@ -501,10 +685,20 @@ async def bubble_cleaning(body: RemoveBubblesRequest):
                 cleaned_bytes = f.read()
                 
             cache_id = f"merged_{int(time.time() * 1000)}_cleaned"
-            new_url = f"/api/merge-images/cached/{cache_id}"
+            new_url = f"/api/stitch-images/cached/{cache_id}"
             
             stitched_cache.set(cache_id, {"data": cleaned_bytes, "content_type": content_type})
-            edit_history.set(new_url, body.url)
+            # Save recipe
+            recipe = {
+                "type": "clean",
+                "url": body.url,
+                "method": body.method,
+                "sensitivity": body.sensitivity,
+                "dilation": body.dilation,
+                "inpaint_radius": body.inpaint_radius,
+                "detection_style": body.detection_style
+            }
+            edit_history.set(new_url, recipe)
             
             logger.info(f"[Bubble Cleaner] Successfully cleaned bubbles. Cached as: {new_url}")
             return {"success": True, "url": new_url}
