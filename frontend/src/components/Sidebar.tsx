@@ -19,22 +19,27 @@ import {
 } from "lucide-react";
 import { GeneratedPanel } from "../types";
 import { Notification } from "./NotificationStack";
+import { useProjectStore } from "../store/useProjectStore";
+import { useEditorStore } from "../store/useEditorStore";
+import { useNotificationStore } from "../store/useNotificationStore";
 
 interface SidebarProps {
   isProcessing: boolean;
-  panels: GeneratedPanel[];
-  scrapedImages: string[];
   totalCalculatedDuration: number;
   currentPath: string;
-  editingImageIdx: number | null;
   lastEditorPath: string;
-  isBatchCropping: boolean;
-  isCleaningBubbles: boolean;
   isOpen: boolean;
   onClose: () => void;
-  projectId?: string | null;
   isDirty?: boolean;
   navigateTo?: (path: string) => void;
+
+  // These props are now handled by Zustand but kept optional for compatibility
+  panels?: GeneratedPanel[];
+  scrapedImages?: string[];
+  editingImageIdx?: number | null;
+  isBatchCropping?: boolean;
+  isCleaningBubbles?: boolean;
+  projectId?: string | null;
   notifications?: Notification[];
   seriesSlug?: string | null;
   chapterSlug?: string | null;
@@ -42,23 +47,25 @@ interface SidebarProps {
 
 export default function Sidebar({
   isProcessing,
-  panels,
-  scrapedImages,
   totalCalculatedDuration,
   currentPath,
-  editingImageIdx,
   lastEditorPath,
-  isBatchCropping,
-  isCleaningBubbles,
   isOpen,
   onClose,
-  projectId = null,
   isDirty = false,
   navigateTo: routerNavigateTo,
-  notifications = [],
-  seriesSlug = null,
-  chapterSlug = null,
+  editingImageIdx,
+  isBatchCropping,
+  isCleaningBubbles,
 }: SidebarProps) {
+  const {
+    panels,
+    scrapedImages,
+    projectId,
+    seriesSlugState: seriesSlug,
+    chapterSlugState: chapterSlug,
+  } = useProjectStore();
+  const { notifications } = useNotificationStore();
   const chapterPathMatch = currentPath.match(
     /\/series\/[^\/]+\/chapters\/([^\/]+)/
   );

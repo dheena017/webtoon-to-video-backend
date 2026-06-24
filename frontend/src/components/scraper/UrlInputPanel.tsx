@@ -3,6 +3,10 @@ import { Sparkles, Image as ImageIcon } from "lucide-react";
 import { AI_MODELS } from "../../models";
 import { NotificationType } from "../NotificationStack";
 import { extractWebtoonUrl } from "../../utils/url";
+import { useProjectStore } from "../../store/useProjectStore";
+import { useEditorStore } from "../../store/useEditorStore";
+import { useNotificationStore } from "../../store/useNotificationStore";
+import { scrapeImages } from "../../services/projectService";
 
 const SOURCE_OPTIONS = [{ id: "custom", name: "Direct Image / Custom URL" }];
 
@@ -15,73 +19,62 @@ const SOURCE_DOMAINS: Record<string, string[]> = {
 };
 
 interface UrlInputPanelProps {
-  targetUrl: string;
-  setTargetUrl: (url: string) => void;
-  selectedSource: string;
-  setSelectedSource: (source: string) => void;
-  selectedModel: string;
-  setSelectedModel: (model: string) => void;
-  isProcessing: boolean;
-  isScraping?: boolean;
-  handleGenerateVideo: () => void;
-  handleScrape?: () => void;
-  addNotification: (message: string, type: NotificationType) => void;
-  narrationStyle?: string;
-  setNarrationStyle?: (style: string) => void;
-  seriesTitle?: string;
-  setSeriesTitle?: (title: string) => void;
-  chapterNumber?: string;
-  setChapterNumber?: (num: string) => void;
-  chapterTitle?: string;
-  setChapterTitle?: (title: string) => void;
-  scrapedGenre?: string;
-  setScrapedGenre?: (genre: string) => void;
-  seriesAuthor?: string;
-  setSeriesAuthor?: (author: string) => void;
-  seriesCoverImage?: string;
-  setSeriesCoverImage?: (coverImage: string) => void;
-  seriesSynopsis?: string;
-  setSeriesSynopsis?: (synopsis: string) => void;
-  smartSlice?: boolean;
-  setSmartSlice?: (v: boolean) => void;
+  isProcessing?: boolean;
+  handleGenerateVideo?: () => void;
   resetWorkspace?: () => void;
   handleSaveMeta?: () => void;
+  setShowScrapeConfirmModal?: (v: boolean) => void;
 }
 
 export default function UrlInputPanel(props: UrlInputPanelProps) {
   const {
+    isProcessing,
+    handleGenerateVideo,
+    resetWorkspace,
+    handleSaveMeta,
+    setShowScrapeConfirmModal,
+  } = props;
+
+  const {
     targetUrl,
     setTargetUrl,
+    isScraping,
+    seriesTitle,
+    setSeriesTitle,
+    chapterNumber,
+    setChapterNumber,
+    chapterTitle,
+    setChapterTitle,
+    scrapedGenre,
+    setScrapedGenre,
+    seriesAuthor,
+    setSeriesAuthor,
+    seriesCoverImage,
+    setSeriesCoverImage,
+    seriesSynopsis,
+    setSeriesSynopsis,
+  } = useProjectStore();
+
+  const {
     selectedSource,
     setSelectedSource,
     selectedModel,
     setSelectedModel,
-    isProcessing,
-    isScraping = false,
-    handleGenerateVideo,
-    handleScrape,
-    addNotification,
-    narrationStyle = "long",
+    narrationStyle,
     setNarrationStyle,
-    seriesTitle = "",
-    setSeriesTitle,
-    chapterNumber = "",
-    setChapterNumber,
-    chapterTitle = "",
-    setChapterTitle,
-    scrapedGenre = "",
-    setScrapedGenre,
-    seriesAuthor = "",
-    setSeriesAuthor,
-    seriesCoverImage = "",
-    setSeriesCoverImage,
-    seriesSynopsis = "",
-    setSeriesSynopsis,
-    smartSlice = true,
+    smartSlice,
     setSmartSlice,
-    resetWorkspace,
-    handleSaveMeta,
-  } = props;
+  } = useEditorStore();
+
+  const { addNotification } = useNotificationStore();
+
+  const handleScrape = () => {
+    if (setShowScrapeConfirmModal) {
+      setShowScrapeConfirmModal(true);
+    } else {
+      scrapeImages();
+    }
+  };
 
   // Metadata card is hidden until the user clicks Import Assets
   const [metadataRevealed, setMetadataRevealed] = React.useState(false);

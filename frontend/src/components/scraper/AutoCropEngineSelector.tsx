@@ -207,13 +207,16 @@ export function AutoCropEngineSelector({
   };
 
   // Model grid details
-  const modelCards = AI_MODELS.filter(m => m.provider === "Google" && m.id.includes("gemini")).map(model => ({
+  const modelCards = AI_MODELS.filter(
+    (m) => m.provider === "Google" && m.id.includes("gemini")
+  ).map((model) => ({
     id: model.id,
     name: model.name,
-    badge: model.type === 'free' ? "⚡ Fast & Light" : "🧠 Deep Visual",
-    desc: model.type === 'free' 
-      ? "Ideal for standard panel boundaries. Rapid processing times. Free tier friendly."
-      : "Deep visual comprehension. Best for complex overlapping panels, dark background panels, and artwork-only separation."
+    badge: model.type === "free" ? "⚡ Fast & Light" : "🧠 Deep Visual",
+    desc:
+      model.type === "free"
+        ? "Ideal for standard panel boundaries. Rapid processing times. Free tier friendly."
+        : "Deep visual comprehension. Best for complex overlapping panels, dark background panels, and artwork-only separation.",
   }));
 
   return (

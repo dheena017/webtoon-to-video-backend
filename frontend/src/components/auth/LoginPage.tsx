@@ -201,6 +201,17 @@ export default function LoginPage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+
+    if (!isEmailValid) {
+      setError("Please enter a valid email address format.");
+      return;
+    }
+
+    if (!isPasswordValid) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
@@ -410,14 +421,14 @@ export default function LoginPage({
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => handleSocialLogin("Google")}
-              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 text-white font-medium text-xs transition-all duration-300 cursor-pointer shadow-sm active:scale-[0.98]"
+              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 text-white font-semibold text-xs transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
             >
               <Chrome className="w-4 h-4 text-neutral-300" />
               Google
             </button>
             <button
               onClick={() => handleSocialLogin("GitHub")}
-              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 text-white font-medium text-xs transition-all duration-300 cursor-pointer shadow-sm active:scale-[0.98]"
+              className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 text-white font-semibold text-xs transition-all duration-300 cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
             >
               <Github className="w-4 h-4 text-neutral-300" />
               GitHub
@@ -505,7 +516,8 @@ export default function LoginPage({
               // DEFAULT EMAIL/PASSWORD INPUT FORM
               <form className="space-y-5" onSubmit={handleSubmit}>
                 {error && (
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center font-medium animate-shake">
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center font-semibold animate-shake shadow-[0_0_15px_rgba(244,63,94,0.1)] flex items-center justify-center gap-2">
+                    <Info className="w-4 h-4 flex-shrink-0" />
                     {error}
                   </div>
                 )}
@@ -535,12 +547,19 @@ export default function LoginPage({
                     <input
                       type="email"
                       required
+                      autoFocus
+                      disabled={isLoading}
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className={`w-full bg-black/40 border rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:ring-2 transition-all font-medium ${
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      className={`w-full bg-[#0a0a0e]/60 hover:bg-[#0a0a0e]/80 border rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:ring-4 transition-all duration-300 font-medium shadow-inner ${
+                        isLoading ? "opacity-50 cursor-not-allowed" : ""
+                      } ${
                         isEmailValid
-                          ? "border-emerald-500/20 focus:ring-emerald-500/20 focus:border-emerald-500/40"
-                          : `border-white/5 ${currentTheme.focus}`
+                          ? "border-emerald-500/30 focus:ring-emerald-500/10 focus:border-emerald-500/50"
+                          : `border-white/5 hover:border-white/10 ${currentTheme.focus}`
                       }`}
                       placeholder={t.emailPlaceholder}
                     />
@@ -572,14 +591,20 @@ export default function LoginPage({
                     <input
                       type={showPassword ? "text" : "password"}
                       required
+                      disabled={isLoading}
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (error) setError(null);
+                      }}
                       onKeyDown={checkCapsLock}
                       onKeyUp={checkCapsLock}
-                      className={`w-full bg-black/40 border rounded-xl py-3 pl-11 pr-10 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:ring-2 transition-all font-medium ${
+                      className={`w-full bg-[#0a0a0e]/60 hover:bg-[#0a0a0e]/80 border rounded-xl py-3 pl-11 pr-10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:ring-4 transition-all duration-300 font-medium shadow-inner ${
+                        isLoading ? "opacity-50 cursor-not-allowed" : ""
+                      } ${
                         isPasswordValid
-                          ? "border-emerald-500/20 focus:ring-emerald-500/20 focus:border-emerald-500/40"
-                          : `border-white/5 ${currentTheme.focus}`
+                          ? "border-emerald-500/30 focus:ring-emerald-500/10 focus:border-emerald-500/50"
+                          : `border-white/5 hover:border-white/10 ${currentTheme.focus}`
                       }`}
                       placeholder={t.passwordPlaceholder}
                     />
@@ -642,10 +667,19 @@ export default function LoginPage({
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className={`w-full ${currentTheme.button} text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 group cursor-pointer duration-300 active:scale-[0.99] mt-2`}
+                  className={`w-full ${
+                    currentTheme.button
+                  } text-white font-extrabold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 group duration-300 mt-2 ${
+                    isLoading
+                      ? "opacity-80 cursor-wait"
+                      : "cursor-pointer hover:shadow-lg active:scale-[0.98]"
+                  }`}
                 >
                   {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Signing In...
+                    </>
                   ) : (
                     <>
                       {t.signIn}
@@ -656,23 +690,22 @@ export default function LoginPage({
               </form>
             )}
 
-            {/* Toggle between QR Code and Form buttons */}
-            <div className="mt-3 flex gap-2">
+            <div className="mt-4 flex gap-3">
               <button
                 type="button"
                 onClick={handlePasskeySignIn}
-                className="flex-1 bg-[#0a0a0e]/60 hover:bg-[#101018]/80 text-neutral-300 hover:text-white border border-white/5 hover:border-white/10 text-[10px] font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer duration-300"
+                className="flex-1 bg-gradient-to-b from-white/[0.05] to-transparent hover:from-white/[0.08] text-neutral-300 hover:text-white border border-white/5 hover:border-white/10 text-[10px] font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer duration-300 hover:-translate-y-0.5 hover:shadow-lg shadow-black/50"
               >
-                <KeyRound className="w-3.5 h-3.5 text-purple-400" />
+                <KeyRound className={`w-4 h-4 ${currentTheme.accentText}`} />
                 {t.passkeyBtn}
               </button>
 
               <button
                 type="button"
                 onClick={() => setIsQrLogin(!isQrLogin)}
-                className="flex-1 bg-[#0a0a0e]/60 hover:bg-[#101018]/80 text-neutral-300 hover:text-white border border-white/5 hover:border-white/10 text-[10px] font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer duration-300"
+                className="flex-1 bg-gradient-to-b from-white/[0.05] to-transparent hover:from-white/[0.08] text-neutral-300 hover:text-white border border-white/5 hover:border-white/10 text-[10px] font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer duration-300 hover:-translate-y-0.5 hover:shadow-lg shadow-black/50"
               >
-                <QrCode className="w-3.5 h-3.5 text-purple-400" />
+                <QrCode className={`w-4 h-4 ${currentTheme.accentText}`} />
                 {isQrLogin ? t.qrFormToggle : t.qrToggle}
               </button>
             </div>

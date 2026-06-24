@@ -25,6 +25,10 @@ import { GeneratedPanel } from "../types";
 import NotificationDropdown from "./NotificationDropdown";
 import { Notification } from "./NotificationStack";
 import { AI_MODELS } from "@/models";
+import { useAuthStore } from "../store/useAuthStore";
+import { useProjectStore } from "../store/useProjectStore";
+import { useEditorStore } from "../store/useEditorStore";
+import { useNotificationStore } from "../store/useNotificationStore";
 
 interface HeaderProps {
   isProcessing: boolean;
@@ -38,6 +42,13 @@ interface HeaderProps {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
   backendStatus: "online" | "offline" | "checking";
+  projectId?: string | null;
+  saveStatus?: string;
+  isDirty?: boolean;
+  onSave?: () => void;
+  navigateTo?: (path: string) => void;
+
+  // The following props are now managed by Zustand but kept optional for compatibility
   narrationStyle?: string;
   setNarrationStyle?: (style: "long" | "short") => void;
   selectedModel?: string;
@@ -47,16 +58,11 @@ interface HeaderProps {
   isMuted?: boolean;
   setIsMuted?: (muted: boolean) => void;
   user?: any;
-  notifications: Notification[];
-  markNotificationAsRead: (id: number) => void;
-  markAllNotificationsAsRead: () => void;
-  deleteNotification: (id: number) => void;
-  clearAllNotifications: () => void;
-  projectId?: string | null;
-  saveStatus?: string;
-  isDirty?: boolean;
-  onSave?: () => void;
-  navigateTo?: (path: string) => void;
+  notifications?: Notification[];
+  markNotificationAsRead?: (id: number) => void;
+  markAllNotificationsAsRead?: () => void;
+  deleteNotification?: (id: number) => void;
+  clearAllNotifications?: () => void;
   notificationsMuted?: boolean;
   setNotificationsMuted?: (muted: boolean) => void;
 }
@@ -82,28 +88,41 @@ export default function Header({
   onToggleSidebar,
   isSidebarOpen = false,
   backendStatus,
-  narrationStyle = "long",
-  setNarrationStyle,
-  selectedModel = "gemini-2.5-flash",
-  setSelectedModel,
-  volume = 0.8,
-  setVolume,
-  isMuted = false,
-  setIsMuted,
-  user,
-  notifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
-  deleteNotification,
-  clearAllNotifications,
   projectId = null,
   saveStatus = "idle",
   isDirty = false,
   onSave,
   navigateTo: routerNavigateTo,
-  notificationsMuted = false,
-  setNotificationsMuted,
 }: HeaderProps) {
+  const { user } = useAuthStore();
+  const {
+    narrationStyle,
+    setNarrationStyle,
+    selectedModel,
+    setSelectedModel,
+    volume,
+    setVolume,
+    isMuted,
+    setIsMuted,
+  } = useEditorStore();
+
+  const {
+    notifications,
+    notificationsMuted,
+    setNotificationsMuted,
+    removeNotification: markNotificationAsRead,
+    setNotifications,
+  } = useNotificationStore();
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+  };
+  const deleteNotification = (id: number) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);

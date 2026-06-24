@@ -132,6 +132,8 @@ export function AppWorkspace({
   projectId,
   panels,
   setPanels,
+  isGeneratingStoryboard = false,
+  handleGenerateStoryboardAI,
   consoleLogs,
   setConsoleLogs,
   scrapedImages,
@@ -232,8 +234,6 @@ export function AppWorkspace({
   showScrapeConfirmModal,
   setShowScrapeConfirmModal,
   saveProject,
-  isGeneratingStoryboard = false,
-  handleGenerateStoryboardAI,
   resetWorkspace,
 }: AppWorkspaceProps) {
   React.useEffect(() => {
@@ -415,62 +415,11 @@ export function AppWorkspace({
       >
         {/* CONVERSION INPUT CARD */}
         <UrlInputPanel
-          targetUrl={targetUrl}
-          setTargetUrl={setTargetUrl}
-          selectedSource={selectedSource}
-          setSelectedSource={setSelectedSource}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
           isProcessing={isProcessing}
-          isScraping={isScraping}
           handleGenerateVideo={handleGenerateVideo}
-          handleScrape={() => {
-            const token =
-              localStorage.getItem("sonikoma_token") ||
-              sessionStorage.getItem("sonikoma_token");
-            if (!token) {
-              const usedFree = localStorage.getItem(
-                "sonikoma_free_scrape_used"
-              );
-              if (usedFree === "true") {
-                addNotification(
-                  "You've used your free try. Please sign in to import more links!",
-                  "warning"
-                );
-                if (typeof (window as any).navigateTo === "function") {
-                  (window as any).navigateTo("/login");
-                } else {
-                  window.history.pushState({}, "", "/login");
-                  window.dispatchEvent(new Event("popstate"));
-                }
-                return;
-              } else {
-                localStorage.setItem("sonikoma_free_scrape_used", "true");
-              }
-            }
-            setShowScrapeConfirmModal(true);
-          }}
-          addNotification={addNotification}
-          narrationStyle={narrationStyle}
-          setNarrationStyle={setNarrationStyle}
-          seriesTitle={seriesTitle}
-          setSeriesTitle={setSeriesTitle}
-          chapterNumber={chapterNumber}
-          setChapterNumber={setChapterNumber}
-          chapterTitle={chapterTitle}
-          setChapterTitle={setChapterTitle}
-          scrapedGenre={scrapedGenre}
-          setScrapedGenre={setScrapedGenre}
-          seriesAuthor={seriesAuthor}
-          setSeriesAuthor={setSeriesAuthor}
-          seriesCoverImage={seriesCoverImage}
-          setSeriesCoverImage={setSeriesCoverImage}
-          seriesSynopsis={seriesSynopsis}
-          setSeriesSynopsis={setSeriesSynopsis}
-          smartSlice={smartSlice}
-          setSmartSlice={setSmartSlice}
           resetWorkspace={resetWorkspace}
           handleSaveMeta={handleSaveMeta}
+          setShowScrapeConfirmModal={setShowScrapeConfirmModal}
         />
 
         {/* SEPARATED IMAGE STRIPS GALLERY */}
