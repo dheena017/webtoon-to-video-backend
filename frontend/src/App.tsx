@@ -10,6 +10,7 @@ import { AlertTriangle, X } from "lucide-react";
 // --- Custom Logic Hooks ---
 import { useAppLogic } from "./hooks/useAppLogic.js";
 import { useAppRouter } from "./hooks/useAppRouter.js";
+import { useMediaQuery } from "./hooks/useMediaQuery.js";
 import {
   useGlobalShortcuts,
   DEFAULT_SHORTCUTS,
@@ -129,7 +130,16 @@ export default function App() {
 
   // --- Mobile Sidebar Toggle State ---
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = React.useState(() => {
+    return localStorage.getItem("sidebar_expanded") !== "false";
+  });
   const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
+
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  React.useEffect(() => {
+    localStorage.setItem("sidebar_expanded", String(isSidebarExpanded));
+  }, [isSidebarExpanded]);
 
   React.useEffect(() => {
     const container = document.getElementById("main-scroll-container");
@@ -805,6 +815,9 @@ export default function App() {
         isCleaningBubbles={isCleaningBubbles}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isExpanded={isSidebarExpanded}
+        setIsExpanded={setIsSidebarExpanded}
+        isDesktop={isDesktop}
         projectId={projectId}
         isDirty={isWorkspaceDirty}
         navigateTo={navigateTo}
@@ -816,9 +829,12 @@ export default function App() {
       {/* --- Main Contents Controller & Router --- */}
       <div
         id="main-scroll-container"
-        className={`flex-grow flex-1 flex flex-col min-h-screen lg:max-h-screen justify-between ${
+        className={`flex-grow flex-1 flex flex-col min-h-screen lg:max-h-screen justify-between transition-all duration-300 ${
           isSidebarOpen ? "overflow-hidden" : "lg:overflow-y-auto"
         }`}
+        style={{
+          paddingLeft: isDesktop ? (isSidebarExpanded ? "288px" : "64px") : "0px",
+        }}
       >
         <div>
           {/* Impersonation Banner */}
@@ -931,8 +947,15 @@ export default function App() {
             lastEditorPath={lastEditorPath}
             isBatchCropping={isBatchCropping}
             isCleaningBubbles={isCleaningBubbles}
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={() => {
+              if (isDesktop) {
+                setIsSidebarExpanded(!isSidebarExpanded);
+              } else {
+                setIsSidebarOpen(!isSidebarOpen);
+              }
+            }}
+            isSidebarOpen={isDesktop ? isSidebarExpanded : isSidebarOpen}
+            isDesktop={isDesktop}
             backendStatus={backendStatus}
             narrationStyle={narrationStyle}
             setNarrationStyle={setNarrationStyle}
@@ -1654,7 +1677,12 @@ export default function App() {
       )}
 
       {/* --- Terminal Floating Interface --- */}
-      <div className="fixed bottom-6 left-6 z-[100] flex flex-col items-start gap-4">
+      <div
+        className="fixed bottom-6 z-[100] flex flex-col items-start gap-4 transition-all duration-300"
+        style={{
+          left: isDesktop ? (isSidebarExpanded ? "312px" : "88px") : "24px",
+        }}
+      >
         {isTerminalOpen && (
           <div className="w-[90vw] md:w-[600px] max-h-[70vh] bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
             <div className="p-2">

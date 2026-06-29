@@ -39,6 +39,7 @@ interface HeaderProps {
   isCleaningBubbles: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  isDesktop?: boolean;
   backendStatus: "online" | "offline" | "checking";
   narrationStyle?: string;
   setNarrationStyle?: (style: "long" | "short") => void;
@@ -91,6 +92,7 @@ const HeaderInner = ({
   isCleaningBubbles,
   onToggleSidebar,
   isSidebarOpen = false,
+  isDesktop = false,
   backendStatus,
   narrationStyle = "long",
   setNarrationStyle,
@@ -461,17 +463,22 @@ const HeaderInner = ({
   return (
     <header
       id="header_pane"
-      className="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-md sticky top-0 z-40 pl-4 pr-6 md:pr-8 py-3 flex items-center justify-between gap-4"
+      className="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-md sticky top-0 z-40 pl-4 pr-6 md:pr-8 py-3 flex items-center justify-between gap-4 transition-all duration-300"
+      style={{
+        left: isDesktop ? (isSidebarOpen ? "288px" : "64px") : "0px",
+      }}
     >
       {/* Left side: Hamburger and Brand */}
       <div className="flex items-center gap-3 shrink-0">
-        <button
-          onClick={onToggleSidebar}
-          className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-white cursor-pointer"
-          title="Toggle Navigation Menu"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+        {!isDesktop && (
+          <button
+            onClick={onToggleSidebar}
+            className="p-1.5 rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-white cursor-pointer"
+            title="Toggle Navigation Menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
 
         <div
           className="flex items-center gap-2 cursor-pointer select-none transition-all duration-300"
