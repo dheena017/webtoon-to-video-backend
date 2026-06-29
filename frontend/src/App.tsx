@@ -50,6 +50,7 @@ import SeriesDetailsPage from "./components/SeriesDetailsPage.js";
 import DisplayPage from "./components/DisplayPage.js";
 import DashboardPage from "./components/DashboardPage.js";
 import ProjectsPage from "./components/ProjectsPage.js";
+import WorkspaceEditPage from "./components/WorkspaceEditPage.js";
 
 // --- AI Creator & Engagement Suite Views ---
 import AIOptimizerPage from "./components/optimizer/AIOptimizerPage.js";
@@ -558,6 +559,7 @@ export default function App() {
       isDetailsMode,
       isWorkspacePath,
       isWorkspaceOnly: isWorkspacePath,
+      isWorkspaceEditPath: currentPath === "/workspace-edit",
       isDashboardOverviewPath: currentPath === "/dashboard",
       isProjectsPath: currentPath === "/projects",
       isSettingsPath: currentPath === "/settings",
@@ -601,6 +603,7 @@ export default function App() {
     chapterPathMatch,
     isWorkspacePath,
     isWorkspaceOnly,
+    isWorkspaceEditPath,
     isDashboardOverviewPath,
     isProjectsPath,
     isSettingsPath,
@@ -758,6 +761,16 @@ export default function App() {
   ) {
     setTimeout(() => navigateTo("/"), 0);
     return <LoadingPage status="Redirecting to Landing Page..." />;
+  }
+
+  // --- Guard: Workspace Edit Page ---
+  if (isWorkspaceEditPath) {
+    return (
+      <WorkspaceEditPage
+        onNavigateHome={() => navigateTo("/dashboard")}
+        navigateTo={navigateTo}
+      />
+    );
   }
 
   // --------------------------------------------------------------------------

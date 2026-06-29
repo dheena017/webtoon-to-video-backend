@@ -81,14 +81,15 @@ const SidebarInner = ({
   const isDashboardOverview = currentPath === "/dashboard";
   const isAdminPath = currentPath === "/admin";
   const isSettings = currentPath === "/settings";
-  const isAutoCrop = currentPath === "/auto-crop";
-  const isBubbleCleaner = currentPath === "/bubble-cleaner";
-  const isEditor = currentPath.startsWith("/editor");
+  const isAutoCrop = currentPath === "/auto-crop" || (currentPath === "/workspace-edit" && window.location.search.includes("tab=autocrop"));
+  const isBubbleCleaner = currentPath === "/bubble-cleaner" || (currentPath === "/workspace-edit" && window.location.search.includes("tab=bubblecleaner"));
+  const isEditor = currentPath.startsWith("/editor") || (currentPath === "/workspace-edit" && window.location.search.includes("tab=editor"));
   const isLogs = currentPath === "/logs";
   const isStatus = currentPath === "/status";
   const isShortcuts = currentPath === "/shortcuts";
   const isAIModels = currentPath === "/ai-models";
   const isProjects = currentPath === "/projects";
+  const isWorkspaceEdit = currentPath === "/workspace-edit";
 
   const activeProjectId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -173,6 +174,13 @@ const SidebarInner = ({
           enabled: true,
         },
         {
+          label: "Workspace Edit",
+          icon: Layout,
+          active: isWorkspaceEdit,
+          onClick: () => navigateTo("/workspace-edit"),
+          enabled: true,
+        },
+        {
           label: "Projects",
           icon: FolderOpen,
           active: isProjects,
@@ -183,7 +191,7 @@ const SidebarInner = ({
           label: "Auto-Crop",
           icon: Scissors,
           active: isAutoCrop,
-          onClick: () => navigateTo("/auto-crop"),
+          onClick: () => navigateTo("/workspace-edit?tab=autocrop"),
           enabled: true,
           badge:
             scrapedImages.length > 0
@@ -197,7 +205,7 @@ const SidebarInner = ({
           label: "Clean-Bubbles",
           icon: Brain,
           active: isBubbleCleaner,
-          onClick: () => navigateTo("/bubble-cleaner"),
+          onClick: () => navigateTo("/workspace-edit?tab=bubblecleaner"),
           enabled: true,
           isProcessing: isCleaningBubbles,
         },
@@ -205,10 +213,8 @@ const SidebarInner = ({
           label: "Editor",
           icon: Film,
           active: isEditor,
-          onClick: () => {
-            if (lastEditorPath) navigateTo(lastEditorPath);
-          },
-          enabled: scrapedImages.length > 0 || panels.length > 0,
+          onClick: () => navigateTo("/workspace-edit?tab=editor"),
+          enabled: true,
           badge:
             editingImageIdx !== null
               ? `#${editingImageIdx + 1}`

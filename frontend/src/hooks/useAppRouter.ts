@@ -162,6 +162,7 @@ export function useAppRouter({
             path === "/notifications" ||
             path === "/auto-crop" ||
             path === "/bubble-cleaner" ||
+            path === "/workspace-edit" ||
             path === "/projects" ||
             path.startsWith("/series/") ||
             path.startsWith("/editor");
@@ -226,6 +227,7 @@ export function useAppRouter({
         path === "/notifications" ||
         path === "/projects" ||
         path === "/dashboard" ||
+        path === "/workspace-edit" ||
         path.startsWith("/display") ||
         isChapterDetails
       ) {
