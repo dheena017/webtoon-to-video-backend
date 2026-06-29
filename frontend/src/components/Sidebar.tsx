@@ -18,6 +18,8 @@ import {
   Shield,
   FolderOpen,
   Award,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import { useThemeMode } from "../hooks/useThemeMode";
@@ -36,6 +38,9 @@ interface SidebarProps {
   isCleaningBubbles: boolean;
   isOpen: boolean;
   onClose: () => void;
+  isExpanded?: boolean;
+  setIsExpanded?: (expanded: boolean) => void;
+  isDesktop?: boolean;
   projectId?: string | null;
   isDirty?: boolean;
   navigateTo?: (path: string) => void;
@@ -56,6 +61,9 @@ const SidebarInner = ({
   isCleaningBubbles,
   isOpen,
   onClose,
+  isExpanded = true,
+  setIsExpanded,
+  isDesktop = false,
   projectId = null,
   isDirty = false,
   navigateTo: routerNavigateTo,
@@ -73,14 +81,15 @@ const SidebarInner = ({
   const isDashboardOverview = currentPath === "/dashboard";
   const isAdminPath = currentPath === "/admin";
   const isSettings = currentPath === "/settings";
-  const isAutoCrop = currentPath === "/auto-crop";
-  const isBubbleCleaner = currentPath === "/bubble-cleaner";
-  const isEditor = currentPath.startsWith("/editor");
+  const isAutoCrop = currentPath === "/auto-crop" || (currentPath === "/workspace-edit" && window.location.search.includes("tab=autocrop"));
+  const isBubbleCleaner = currentPath === "/bubble-cleaner" || (currentPath === "/workspace-edit" && window.location.search.includes("tab=bubblecleaner"));
+  const isEditor = currentPath.startsWith("/editor") || (currentPath === "/workspace-edit" && window.location.search.includes("tab=editor"));
   const isLogs = currentPath === "/logs";
   const isStatus = currentPath === "/status";
   const isShortcuts = currentPath === "/shortcuts";
   const isAIModels = currentPath === "/ai-models";
   const isProjects = currentPath === "/projects";
+  const isWorkspaceEdit = currentPath === "/workspace-edit";
 
   const activeProjectId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -165,6 +174,13 @@ const SidebarInner = ({
           enabled: true,
         },
         {
+          label: "Workspace Edit",
+          icon: Layout,
+          active: isWorkspaceEdit,
+          onClick: () => navigateTo("/workspace-edit"),
+          enabled: true,
+        },
+        {
           label: "Projects",
           icon: FolderOpen,
           active: isProjects,
@@ -175,7 +191,7 @@ const SidebarInner = ({
           label: "Auto-Crop",
           icon: Scissors,
           active: isAutoCrop,
-          onClick: () => navigateTo("/auto-crop"),
+          onClick: () => navigateTo("/workspace-edit?tab=autocrop"),
           enabled: true,
           badge:
             scrapedImages.length > 0
@@ -189,7 +205,7 @@ const SidebarInner = ({
           label: "Clean-Bubbles",
           icon: Brain,
           active: isBubbleCleaner,
-          onClick: () => navigateTo("/bubble-cleaner"),
+          onClick: () => navigateTo("/workspace-edit?tab=bubblecleaner"),
           enabled: true,
           isProcessing: isCleaningBubbles,
         },
@@ -197,10 +213,8 @@ const SidebarInner = ({
           label: "Editor",
           icon: Film,
           active: isEditor,
-          onClick: () => {
-            if (lastEditorPath) navigateTo(lastEditorPath);
-          },
-          enabled: scrapedImages.length > 0 || panels.length > 0,
+          onClick: () => navigateTo("/workspace-edit?tab=editor"),
+          enabled: true,
           badge:
             editingImageIdx !== null
               ? `#${editingImageIdx + 1}`
@@ -294,10 +308,10 @@ const SidebarInner = ({
   ];
 
   const sidebarContent = (
-    <div className="flex flex-col h-full justify-between p-5 space-y-6">
+    <div className={`flex flex-col h-full justify-between space-y-6 ${isExpanded ? 'p-5' : 'p-3'}`}>
       {/* BRANDING LOGO */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center ${isExpanded ? 'justify-between' : 'justify-center'}`}>
           <div
             className="flex items-center gap-3 cursor-pointer select-none hover:opacity-90 transition-opacity"
             onClick={handleNavigateToDashboardOverview}
@@ -307,40 +321,46 @@ const SidebarInner = ({
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).src = "/logo.png";
               }}
-              className="h-14 w-14 rounded-full shadow-lg shadow-purple-900/40 shrink-0 object-cover"
+              className={`${isExpanded ? 'h-14 w-14' : 'h-10 w-10'} rounded-full shadow-lg shadow-purple-900/40 shrink-0 object-cover transition-all`}
               style={{
                 background: themeMode === "light" ? "#ffffff" : "#000000",
               }}
               alt="Sonikoma Logo"
             />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-base tracking-tight text-white font-sans">
-                  Sonikoma
-                </span>
+            {isExpanded && (
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-base tracking-tight text-white font-sans">
+                    Sonikoma
+                  </span>
+                </div>
+                <p className="text-[10px] text-neutral-400 font-mono">
+                  Vision Pipeline Suite
+                </p>
               </div>
-              <p className="text-[10px] text-neutral-400 font-mono">
-                Vision Pipeline Suite
-              </p>
-            </div>
+            )}
           </div>
 
-          {/* Close button for drawer */}
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {/* Close button for drawer (Mobile only) */}
+          {!isDesktop && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* NAVIGATION MENUS */}
-        <div className="space-y-6 overflow-y-auto max-h-[calc(100vh-220px)] scrollbar-thin pr-1">
+        <div className={`space-y-6 overflow-y-auto scrollbar-thin pr-1 ${isExpanded ? 'max-h-[calc(100vh-220px)]' : 'max-h-[calc(100vh-140px)]'}`}>
           {menuItems.map((group) => (
             <div key={group.group} className="space-y-2">
-              <h4 className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest font-mono pl-2">
-                {group.group}
-              </h4>
+              {isExpanded && (
+                <h4 className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest font-mono pl-2">
+                  {group.group}
+                </h4>
+              )}
               <ul className="space-y-1">
                 {group.items.map((item) => {
                   const Icon = item.icon;
@@ -349,7 +369,7 @@ const SidebarInner = ({
                       <button
                         onClick={item.onClick}
                         disabled={!item.enabled}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold font-mono transition-all duration-200 cursor-pointer text-left relative group disabled:opacity-35 disabled:cursor-not-allowed ${
+                        className={`w-full flex items-center ${isExpanded ? 'justify-between px-3' : 'justify-center'} py-2.5 rounded-xl text-xs font-bold font-mono transition-all duration-200 cursor-pointer text-left relative group disabled:opacity-35 disabled:cursor-not-allowed ${
                           item.active
                             ? "text-white bg-purple-950/20 border border-purple-900/60 shadow-inner"
                             : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 border border-transparent"
@@ -368,9 +388,9 @@ const SidebarInner = ({
                                 : "text-neutral-500 group-hover:text-neutral-300"
                             }`}
                           />
-                          <span>{item.label}</span>
+                          {isExpanded && <span>{item.label}</span>}
                         </div>
-                        {item.badge && (
+                        {isExpanded && item.badge && (
                           <span
                             className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
                               item.label === "Notifications" && !item.active
@@ -383,7 +403,10 @@ const SidebarInner = ({
                             {item.badge}
                           </span>
                         )}
-                        {item.isProcessing && (
+                        {!isExpanded && (item.badge || item.isProcessing) && (
+                           <span className="absolute -top-1 -right-1 h-3 w-3 bg-purple-600 rounded-full border border-neutral-950 animate-pulse" />
+                        )}
+                        {item.isProcessing && isExpanded && (
                           <span className="absolute right-3 top-3.5 h-1.5 w-1.5 rounded-full bg-purple-400 animate-ping" />
                         )}
                       </button>
@@ -396,13 +419,15 @@ const SidebarInner = ({
 
           {/* Creative Suite Dropdown/Accordion */}
           <div className="space-y-2">
-            <h4 className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest font-mono pl-2">
-              Creative Tools
-            </h4>
-            <div className="space-y-1">
+            {isExpanded && (
+              <h4 className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest font-mono pl-2">
+                Creative Tools
+              </h4>
+            )}
+            <div className="space-y-1 relative">
               <button
                 onClick={() => setAiSuiteExpanded(!aiSuiteExpanded)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold font-mono transition-all duration-200 cursor-pointer text-left border ${
+                className={`w-full flex items-center ${isExpanded ? 'justify-between px-3' : 'justify-center'} py-2.5 rounded-xl text-xs font-bold font-mono transition-all duration-200 cursor-pointer text-left border ${
                   isAiSuiteActive
                     ? "text-purple-300 bg-purple-950/10 border-purple-900/40"
                     : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 border-transparent"
@@ -417,16 +442,18 @@ const SidebarInner = ({
                         : "text-neutral-500"
                     }`}
                   />
-                  <span>Creative Suite</span>
+                  {isExpanded && <span>Creative Suite</span>}
                 </div>
-                {aiSuiteExpanded ? (
-                  <ChevronUp className="h-3.5 w-3.5 text-neutral-500" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
+                {isExpanded && (
+                  aiSuiteExpanded ? (
+                    <ChevronUp className="h-3.5 w-3.5 text-neutral-500" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
+                  )
                 )}
               </button>
 
-              {aiSuiteExpanded && (
+              {aiSuiteExpanded && isExpanded && (
                 <div className="pl-4 pr-1 py-1.5 space-y-1 bg-neutral-950/40 rounded-xl border border-neutral-900/40 mt-1">
                   {creativeSuiteItems.map((subItem) => {
                     const isSubActive = currentPath === subItem.path;
@@ -467,15 +494,68 @@ const SidebarInner = ({
                   })}
                 </div>
               )}
+
+              {/* Floating menu for Creative Suite in mini mode */}
+              {aiSuiteExpanded && !isExpanded && (
+                <div className="fixed left-20 bottom-10 w-56 bg-neutral-950 border border-neutral-800 rounded-2xl shadow-2xl p-2 z-[100] animate-in slide-in-from-left-2 duration-200">
+                  <div className="px-3 py-2 border-b border-neutral-900 mb-2">
+                    <h4 className="text-[10px] font-black uppercase tracking-wider text-purple-400">Creative Suite Tools</h4>
+                  </div>
+                  <div className="space-y-1 max-h-[300px] overflow-y-auto scrollbar-thin pr-1">
+                    {creativeSuiteItems.map((subItem) => {
+                      const isSubActive = currentPath === subItem.path;
+                      const requiresPanels = [
+                        "/ai-optimizer",
+                        "/panel-assistant",
+                        "/ai-translation",
+                        "/ai-audio-lab",
+                        "/ai-voice",
+                      ].includes(subItem.path);
+                      const isLocked = requiresPanels && panels.length === 0;
+
+                      return (
+                        <button
+                          key={subItem.label}
+                          onClick={() => {
+                            navigateTo(subItem.path);
+                            setAiSuiteExpanded(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-[11px] font-mono hover:bg-neutral-900 hover:text-white transition-all cursor-pointer flex items-center justify-between ${
+                            isSubActive
+                              ? "text-purple-300 font-bold bg-neutral-900/60"
+                              : isLocked
+                              ? "text-neutral-500"
+                              : "text-neutral-400"
+                          }`}
+                        >
+                          <span>{subItem.label}</span>
+                          {isLocked && <span className="text-[8px] opacity-50">🔒</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* BOTTOM STATUS CARD */}
-      <div className="space-y-4 pt-4 border-t border-neutral-900">
+      {/* BOTTOM ACTIONS / STATUS */}
+      <div className={`space-y-4 pt-4 border-t border-neutral-900 ${!isExpanded ? 'flex flex-col items-center' : ''}`}>
+        {/* Toggle Button for Desktop */}
+        {isDesktop && (
+          <button
+            onClick={() => setIsExpanded?.(!isExpanded)}
+            className={`w-full flex items-center ${isExpanded ? 'justify-between px-3' : 'justify-center'} py-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-900 transition-all cursor-pointer group`}
+          >
+            {isExpanded && <span className="text-[10px] font-bold font-mono">Collapse Sidebar</span>}
+            {isExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+        )}
+
         {/* Total calculated output metadata */}
-        {panels.length > 0 && (
+        {panels.length > 0 && isExpanded && (
           <div className="px-3 py-2 rounded-xl bg-neutral-900/30 text-neutral-400 text-[10px] font-mono flex items-center justify-between border border-neutral-900/40">
             <span>Video Duration:</span>
             <span className="font-bold text-neutral-200">
@@ -489,21 +569,26 @@ const SidebarInner = ({
 
   return (
     <>
-      {/* Drawer backdrop (visible on both mobile and desktop when open) */}
-      {isOpen && (
+      {/* Drawer backdrop (visible on mobile when open) */}
+      {!isDesktop && isOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-md z-45 transition-opacity animate-fade-in"
           onClick={onClose}
         />
       )}
 
-      {/* Sidebar drawer container (visible on both mobile and desktop, slides in/out) */}
+      {/* Sidebar container */}
       <aside
-        className={`fixed inset-y-0 left-0 w-72 shrink-0 bg-neutral-950/95 border-r border-neutral-900 h-full z-50 transition-transform duration-300 ease-out transform ${
-          isOpen
+        className={`fixed inset-y-0 left-0 shrink-0 bg-neutral-950/95 border-r border-neutral-900 h-full z-50 transition-all duration-300 ease-out transform ${
+          isDesktop
+            ? "translate-x-0"
+            : isOpen
             ? "translate-x-0 shadow-2xl shadow-black/60"
             : "-translate-x-full"
         }`}
+        style={{
+          width: isDesktop ? (isExpanded ? "288px" : "64px") : "288px",
+        }}
       >
         {sidebarContent}
       </aside>

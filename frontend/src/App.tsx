@@ -10,6 +10,7 @@ import { AlertTriangle, X } from "lucide-react";
 // --- Custom Logic Hooks ---
 import { useAppLogic } from "./hooks/useAppLogic.js";
 import { useAppRouter } from "./hooks/useAppRouter.js";
+import { useMediaQuery } from "./hooks/useMediaQuery.js";
 import {
   useGlobalShortcuts,
   DEFAULT_SHORTCUTS,
@@ -45,12 +46,11 @@ import RegisterPage from "./components/auth/RegisterPage.js";
 import ForgotPasswordPage from "./components/auth/ForgotPasswordPage.js";
 import ProfilePage from "./components/ProfilePage.js";
 import LoadingPage from "./components/LoadingPage.js";
-import ProjectDetailsPage from "./components/ProjectDetailsPage.js";
-import ProjectEditorPage from "./components/ProjectEditorPage.js";
 import SeriesDetailsPage from "./components/SeriesDetailsPage.js";
 import DisplayPage from "./components/DisplayPage.js";
 import DashboardPage from "./components/DashboardPage.js";
 import ProjectsPage from "./components/ProjectsPage.js";
+import WorkspaceEditPage from "./components/WorkspaceEditPage.js";
 
 // --- AI Creator & Engagement Suite Views ---
 import AIOptimizerPage from "./components/optimizer/AIOptimizerPage.js";
@@ -129,7 +129,16 @@ export default function App() {
 
   // --- Mobile Sidebar Toggle State ---
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = React.useState(() => {
+    return localStorage.getItem("sidebar_expanded") !== "false";
+  });
   const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
+
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  React.useEffect(() => {
+    localStorage.setItem("sidebar_expanded", String(isSidebarExpanded));
+  }, [isSidebarExpanded]);
 
   React.useEffect(() => {
     const container = document.getElementById("main-scroll-container");
@@ -446,22 +455,7 @@ export default function App() {
     audioFeedback,
   });
 
-  // --- Project Details Page Save Sync State ---
-  const [projectDetailsDirty, setProjectDetailsDirty] = React.useState(false);
-  const [projectDetailsSaveStatus, setProjectDetailsSaveStatus] =
-    React.useState<"idle" | "saving" | "saved" | "error">("idle");
-  const projectDetailsSaveRef = React.useRef<(() => Promise<void>) | null>(
-    null
-  );
-
-  const registerProjectDetailsSaveHandler = React.useCallback(
-    (handler: () => Promise<void>) => {
-      projectDetailsSaveRef.current = handler;
-    },
-    []
-  );
-
-  const isWorkspaceDirty = isDirty || projectDetailsDirty;
+  const isWorkspaceDirty = isDirty;
 
   // --- Router & Path Hook ---
   const {
@@ -565,6 +559,7 @@ export default function App() {
       isDetailsMode,
       isWorkspacePath,
       isWorkspaceOnly: isWorkspacePath,
+      isWorkspaceEditPath: currentPath === "/workspace-edit",
       isDashboardOverviewPath: currentPath === "/dashboard",
       isProjectsPath: currentPath === "/projects",
       isSettingsPath: currentPath === "/settings",
@@ -589,9 +584,7 @@ export default function App() {
       isNotificationsPath: currentPath === "/notifications",
       isAdminPath: currentPath === "/admin",
       isChapterDetailsPath:
-        currentPath === "/project-details" ||
-        (chapterPathMatch !== null && isDetailsMode),
-      isProjectEditorPath: currentPath === "/project-editor",
+        chapterPathMatch !== null && isDetailsMode,
       isSeriesDetailsPath:
         !chapterPathMatch && currentPath.match(/\/series\/([^\/]+)$/) !== null,
       isLandingPath:
@@ -610,6 +603,7 @@ export default function App() {
     chapterPathMatch,
     isWorkspacePath,
     isWorkspaceOnly,
+    isWorkspaceEditPath,
     isDashboardOverviewPath,
     isProjectsPath,
     isSettingsPath,
@@ -634,7 +628,6 @@ export default function App() {
     isNotificationsPath,
     isAdminPath,
     isChapterDetailsPath,
-    isProjectEditorPath,
     isSeriesDetailsPath,
     isLandingPath,
     isLoginPath,
@@ -651,20 +644,6 @@ export default function App() {
     }),
     [appLogic, isPipMode]
   );
-
-  const headerProjectId = isChapterDetailsPath ? detailsProjectId : projectId;
-  const headerIsDirty = isChapterDetailsPath ? projectDetailsDirty : isDirty;
-  const headerSaveStatus = isChapterDetailsPath
-    ? projectDetailsSaveStatus
-    : saveStatus;
-
-  const headerOnSave = React.useCallback(() => {
-    if (isChapterDetailsPath) {
-      projectDetailsSaveRef.current?.();
-    } else {
-      saveProject();
-    }
-  }, [isChapterDetailsPath, saveProject]);
 
   const handleAutoCropApply = React.useCallback(() => {
     console.log("App: Applying AutoCrop configuration parameter changes");
@@ -784,6 +763,16 @@ export default function App() {
     return <LoadingPage status="Redirecting to Landing Page..." />;
   }
 
+  // --- Guard: Workspace Edit Page ---
+  if (isWorkspaceEditPath) {
+    return (
+      <WorkspaceEditPage
+        onNavigateHome={() => navigateTo("/dashboard")}
+        navigateTo={navigateTo}
+      />
+    );
+  }
+
   // --------------------------------------------------------------------------
   // SUB-SECTION 2.4: APPLICATION WORKSPACE AND PAGE RENDERING (JSX)
   // --------------------------------------------------------------------------
@@ -805,6 +794,9 @@ export default function App() {
         isCleaningBubbles={isCleaningBubbles}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isExpanded={isSidebarExpanded}
+        setIsExpanded={setIsSidebarExpanded}
+        isDesktop={isDesktop}
         projectId={projectId}
         isDirty={isWorkspaceDirty}
         navigateTo={navigateTo}
@@ -816,9 +808,12 @@ export default function App() {
       {/* --- Main Contents Controller & Router --- */}
       <div
         id="main-scroll-container"
-        className={`flex-grow flex-1 flex flex-col min-h-screen lg:max-h-screen justify-between ${
+        className={`flex-grow flex-1 flex flex-col min-h-screen lg:max-h-screen justify-between transition-all duration-300 ${
           isSidebarOpen ? "overflow-hidden" : "lg:overflow-y-auto"
         }`}
+        style={{
+          paddingLeft: isDesktop ? (isSidebarExpanded ? "288px" : "64px") : "0px",
+        }}
       >
         <div>
           {/* Impersonation Banner */}
@@ -931,8 +926,15 @@ export default function App() {
             lastEditorPath={lastEditorPath}
             isBatchCropping={isBatchCropping}
             isCleaningBubbles={isCleaningBubbles}
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={() => {
+              if (isDesktop) {
+                setIsSidebarExpanded(!isSidebarExpanded);
+              } else {
+                setIsSidebarOpen(!isSidebarOpen);
+              }
+            }}
+            isSidebarOpen={isDesktop ? isSidebarExpanded : isSidebarOpen}
+            isDesktop={isDesktop}
             backendStatus={backendStatus}
             narrationStyle={narrationStyle}
             setNarrationStyle={setNarrationStyle}
@@ -954,10 +956,10 @@ export default function App() {
             markAllNotificationsAsRead={markAllNotificationsAsRead}
             deleteNotification={deleteNotification}
             clearAllNotifications={clearAllNotifications}
-            projectId={headerProjectId}
-            saveStatus={headerSaveStatus}
-            isDirty={headerIsDirty}
-            onSave={headerOnSave}
+            projectId={projectId}
+            saveStatus={saveStatus}
+            isDirty={isDirty}
+            onSave={saveProject}
             navigateTo={navigateTo}
             notificationsMuted={notificationsMuted}
             setNotificationsMuted={setNotificationsMuted}
@@ -1319,20 +1321,6 @@ export default function App() {
             />
           )}
 
-          {/* PAGE VIEW 17: Project Details Dashboard */}
-          {isChapterDetailsPath && (
-            <ProjectDetailsPage
-              onNavigateHome={handleNavigateHome}
-              navigateTo={navigateTo}
-              setGlobalDirty={setProjectDetailsDirty}
-              setGlobalSaveStatus={setProjectDetailsSaveStatus}
-              registerSaveHandler={registerProjectDetailsSaveHandler}
-              addNotification={addNotification}
-              audioFeedback={audioFeedback}
-              fetchWithInterceptor={fetchWithInterceptor}
-            />
-          )}
-
           {/* PAGE VIEW 17.5: Series Landing Page */}
           {isSeriesDetailsPath && (
             <SeriesDetailsPage
@@ -1437,23 +1425,6 @@ export default function App() {
               />
             ))}
 
-          {/* PAGE VIEW 21: Dedicated Project Workspace Editor Page */}
-          {isProjectEditorPath &&
-            (scrapedImages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center min-h-[500px] text-neutral-400">
-                <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-sm font-semibold font-mono text-purple-300">
-                  Loading project editor workspace...
-                </p>
-              </div>
-            ) : (
-              <ProjectEditorPage
-                appLogic={appLogic}
-                onNavigateHome={handleNavigateHome}
-                navigateTo={navigateTo}
-              />
-            ))}
-
           {/* PAGE VIEW 22: Admin Dashboard */}
           {isAdminPath && (
             <AdminPage
@@ -1473,7 +1444,6 @@ export default function App() {
             !isAutoCropPath &&
             !isBubbleCleanerPath &&
             !isEditorPath &&
-            !isProjectEditorPath &&
             !isLogsPath &&
             !isStatusPath &&
             !isAIModelsPath &&
@@ -1654,7 +1624,12 @@ export default function App() {
       )}
 
       {/* --- Terminal Floating Interface --- */}
-      <div className="fixed bottom-6 left-6 z-[100] flex flex-col items-start gap-4">
+      <div
+        className="fixed bottom-6 z-[100] flex flex-col items-start gap-4 transition-all duration-300"
+        style={{
+          left: isDesktop ? (isSidebarExpanded ? "312px" : "88px") : "24px",
+        }}
+      >
         {isTerminalOpen && (
           <div className="w-[90vw] md:w-[600px] max-h-[70vh] bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
             <div className="p-2">
